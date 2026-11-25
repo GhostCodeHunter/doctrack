@@ -96,8 +96,16 @@ textarea.input{height:auto;min-height:96px;padding:10px 12px;resize:vertical;lin
 #gsiBtn{display:flex;justify-content:center;min-height:44px}
 .known{display:flex;flex-direction:column;gap:8px}
 .known p{font-size:13px;font-weight:600;color:var(--c-ink2);text-align:center}
-.known button{display:flex;align-items:center;gap:12px;height:56px;padding:0 10px;border:1.5px solid var(--c-line);border-radius:999px;background:#fff;text-align:left;font:inherit;color:var(--c-ink)}
-.known button:hover{border-color:var(--c-brown)}
+.known-h{display:flex;align-items:center;justify-content:center;gap:10px;position:relative}
+.kclear{position:absolute;right:6px;border:0;background:none;font:inherit;font-size:13px;font-weight:600;color:var(--c-brown);padding:6px 8px;border-radius:8px}
+.kclear:hover{background:var(--c-peach)}
+.krow{position:relative}
+.kpick{width:100%;display:flex;align-items:center;gap:12px;height:58px;padding:0 56px 0 10px;border:1.5px solid var(--c-line);border-radius:999px;background:#fff;text-align:left;font:inherit;color:var(--c-ink)}
+.kpick:hover{border-color:var(--c-brown)}
+.kmail{display:block;font-size:13px;color:#6B5A4E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kdel{position:absolute;right:9px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;border:0;background:transparent;color:#8C7A6E;display:grid;place-items:center}
+.kdel:hover{background:var(--c-peach);color:var(--c-brown)}
+.khint{font-size:12.5px!important;font-weight:400!important;color:#8C7A6E!important;line-height:1.45}
 .known .avatar{background:var(--c-peach);color:var(--c-brown)}
 .installlink{align-self:center;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:1.5px solid var(--c-line);border-radius:999px;background:transparent;font:inherit;font-size:14px;font-weight:600;color:var(--c-brown)}
 .installlink:hover{background:#fff}
@@ -570,11 +578,15 @@ function renderLogin(err = ""){
         </div>
         ${users.length ? `
           <div class="known" aria-label="Recent accounts">
-            <p>Continue as</p>
-            ${users.map((u, i) => `<button type="button" data-known="${i}">
-              <span class="avatar">${u.picture ? `<img src="${esc(u.picture)}" alt="">` : esc(initials(u.name || u.email.split("@")[0]))}</span>
-              <span style="min-width:0"><b style="display:block;font-size:14.5px;font-weight:600">${esc(u.name || u.email.split("@")[0])}</b><span style="font-size:13px;color:#6B5A4E">${esc(u.email)}</span></span>
-            </button>`).join("")}
+            <div class="known-h"><p>Continue as</p><button type="button" class="kclear" id="knownClear">Clear list</button></div>
+            ${users.map((u, i) => `<div class="krow">
+              <button type="button" class="kpick" data-known="${i}">
+                <span class="avatar">${u.picture ? `<img src="${esc(u.picture)}" alt="">` : esc(initials(u.name || u.email.split("@")[0]))}</span>
+                <span style="min-width:0"><b style="display:block;font-size:14.5px;font-weight:600">${esc(u.name || u.email.split("@")[0])}</b><span class="kmail">${esc(u.email)}</span></span>
+              </button>
+              <button type="button" class="kdel" data-forget="${i}" aria-label="Remove ${esc(u.email)} from this list" title="Remove from list">${ic("x","sm")}</button>
+            </div>`).join("")}
+            <p class="khint">Removing only hides the account here. Its projects stay saved — sign in with the same Gmail to get them back.</p>
           </div>
           <div class="or">or use another account</div>` : ""}
         <form id="emailForm" novalidate style="display:flex;flex-direction:column;gap:22px">
@@ -620,6 +632,14 @@ function renderLogin(err = ""){
   $("#loginInstall").onclick = installApp;
   refreshInstall();
   document.querySelectorAll("[data-known]").forEach(b => b.onclick = () => signIn(users[+b.dataset.known]));
+  document.querySelectorAll("[data-forget]").forEach(b => b.onclick = () => {
+    const u = users[+b.dataset.forget]; if(!u) return;
+    LS.set(KEY.users, knownUsers().filter(x => x.email.toLowerCase() !== u.email.toLowerCase()));
+    renderLogin(); toast("Removed " + u.email + " from the list");
+    const nx = document.querySelector("[data-forget]") || $("#em"); if(nx) nx.focus();
+  });
+  const kc = $("#knownClear");
+  if(kc) kc.onclick = () => { LS.set(KEY.users, []); renderLogin(); toast("Account list cleared"); $("#em").focus(); };
   $("#saveGcid").onclick = () => {
     const v = $("#gcid").value.trim();
     if(v && !/\.apps\.googleusercontent\.com$/.test(v)){ toast("That doesn't look like a Google Client ID"); return; }
