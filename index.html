@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DocTrack — Document Collection</title>
+<meta name="theme-color" content="#8A4B23">
+<meta name="description" content="Track pending company documents: tasks, status, reasons, dashboard, Excel export.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DocTrack">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -90,6 +99,12 @@ textarea.input{height:auto;min-height:96px;padding:10px 12px;resize:vertical;lin
 .known button{display:flex;align-items:center;gap:12px;height:56px;padding:0 10px;border:1.5px solid var(--c-line);border-radius:999px;background:#fff;text-align:left;font:inherit;color:var(--c-ink)}
 .known button:hover{border-color:var(--c-brown)}
 .known .avatar{background:var(--c-peach);color:var(--c-brown)}
+.installlink{align-self:center;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:1.5px solid var(--c-line);border-radius:999px;background:transparent;font:inherit;font-size:14px;font-weight:600;color:var(--c-brown)}
+.installlink:hover{background:#fff}
+[data-install][hidden]{display:none!important}
+.steps{margin:0;padding-left:20px;display:grid;gap:6px;color:var(--ink-2)}
+.ihelp{display:grid;gap:14px}
+.ihelp h3{font-size:15px;display:flex;align-items:center;gap:8px}
 .foot{text-align:center;font-size:13.5px;color:var(--c-ink2)}
 .setup{font-size:13.5px;color:var(--c-ink2)}
 .setup summary{cursor:pointer;list-style:none;text-align:center;font-weight:600;color:var(--c-brown)}
@@ -584,6 +599,7 @@ function renderLogin(err = ""){
           <div class="row"><input class="input sm" id="gcid" value="${esc(LS.get(KEY.gcid, ""))}" placeholder="xxxx.apps.googleusercontent.com"><button class="btn sm" type="button" id="saveGcid">Save</button></div>
         </details>
         <p class="foot">Projects are kept separately for each Gmail account.</p>
+        <button type="button" class="installlink" id="loginInstall" data-install>${ic("dl","sm")}Install DocTrack as an app</button>
       </div>
     </section>
     <aside class="login-art" aria-hidden="true">
@@ -601,6 +617,8 @@ function renderLogin(err = ""){
     signIn({ email, name: $("#nm").value.trim(), via:"email" });
   };
   $("#em").oninput = () => { $("#emErr").hidden = true; $("#emWrap").classList.remove("bad"); $("#em").removeAttribute("aria-invalid"); };
+  $("#loginInstall").onclick = installApp;
+  refreshInstall();
   document.querySelectorAll("[data-known]").forEach(b => b.onclick = () => signIn(users[+b.dataset.known]));
   $("#saveGcid").onclick = () => {
     const v = $("#gcid").value.trim();
@@ -669,6 +687,7 @@ function render(){
         <button type="button" data-nav="pending" ${S.ui.view === "pending" ? 'aria-current="page"' : ""}>${ic("inbox")}<span class="lbl">All pending</span>${openAll ? `<span class="count">${openAll}</span>` : ""}</button>
       </nav>
       <div class="spacer"></div>
+      <button class="btn ghost sm" type="button" data-act="install" data-install title="Install DocTrack as an app" aria-label="Install app">${ic("dl","sm")}<span class="lbl">Install app</span></button>
       <button class="btn primary sm" type="button" data-act="newProject">${ic("plus","sm")}<span class="lbl-np">New project</span></button>
       <div class="rel">
         <button class="userbtn" type="button" id="userBtn" aria-haspopup="menu" aria-expanded="false">
@@ -676,6 +695,7 @@ function render(){
           <span class="who"><b>${esc(u.name || u.email.split("@")[0])}</b><span>${esc(u.email)}</span></span>
         </button>
         <div class="menu" id="userMenu" role="menu">
+          <button type="button" role="menuitem" data-act="install" data-install>${ic("dl","sm")}Install as app / shortcut</button>
           <button type="button" role="menuitem" data-act="backup">${ic("dl","sm")}Download backup (.json)</button>
           <label role="menuitem">${ic("up","sm")}Restore from backup<input type="file" accept=".json,application/json" id="restoreIn" class="sr"></label>
           <hr>
@@ -694,6 +714,7 @@ function render(){
   $("#restoreIn").onchange = restoreBackup;
   bindActs($("#app"));
   renderMain();
+  refreshInstall();
 }
 document.addEventListener("click", e => {
   const um = $("#userMenu");
@@ -755,6 +776,7 @@ function act(a, d, el){
     case "allReceived": { const t = taskOf(p, S.ui.tid); if(!t) return; t.docs.forEach(x => { if(x.status !== "received"){ x.status = "received"; x.updatedAt = now(); } }); save(); renderMain(); toast(`All documents received for ${t.name}`); return; }
     case "export": return exportXlsx(p);
     case "backup": return downloadBackup();
+    case "install": { const um = $("#userMenu"); if(um) um.classList.remove("open"); return installApp(); }
     case "signout": return signOut();
   }
 }
@@ -1373,6 +1395,44 @@ async function exportXlsx(p){
   if(await downloadBlob(zipStore(files), `${safe}_documents_${new Date().toISOString().slice(0, 10)}.xlsx`)) toast("Excel report downloaded");
 }
 
+
+/* ============================================================
+   INSTALL AS APP (PWA)
+   ============================================================ */
+const APP_URL = "https://ghostcodehunter.github.io/doctrack/";
+let installEvt = null;
+const isStandalone = () => { try{ return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }catch(e){ return false; } };
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; refreshInstall(); });
+window.addEventListener("appinstalled", () => { installEvt = null; refreshInstall(); toast("DocTrack installed"); });
+function refreshInstall(){ const hide = isStandalone(); document.querySelectorAll("[data-install]").forEach(b => b.hidden = hide); }
+async function installApp(){
+  if(installEvt){
+    const ev = installEvt; installEvt = null;
+    try{ ev.prompt(); const r = await ev.userChoice; if(r && r.outcome === "accepted") return; }catch(e){}
+    return;
+  }
+  installHelp();
+}
+function installHelp(){
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(ua);
+  const hosted = location.origin + location.pathname === APP_URL || location.hostname.endsWith("github.io") || location.hostname.endsWith("netlify.app");
+  const sec = (title, icn, items) => `<div><h3>${ic(icn,"sm")}${title}</h3><ol class="steps">${items.map(i => `<li>${i}</li>`).join("")}</ol></div>`;
+  const iphone = sec("iPhone / iPad (Safari)", "doc", ["Tap the <b>Share</b> button (square with arrow).", "Choose <b>Add to Home Screen</b>.", "Tap <b>Add</b>."]);
+  const andr = sec("Android (Chrome)", "doc", ["Tap the <b>⋮</b> menu at the top right.", "Choose <b>Install app</b> or <b>Add to Home screen</b>.", "Tap <b>Install</b>."]);
+  const desk = sec("Computer (Chrome or Edge)", "grid", ["Click the <b>install icon</b> at the right end of the address bar.", "Or open the <b>⋮</b> / <b>…</b> menu → <b>Cast, save and share</b> → <b>Install page as app</b> (Edge: <b>Apps → Install this site as an app</b>).", "DocTrack opens in its own window and gets a desktop / Start menu shortcut."]);
+  openModal(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="ihT">
+    <div class="modal-h"><div><h2 id="ihT">Install DocTrack</h2><p>Add DocTrack as an app with its own icon. It opens in its own window and works offline.</p></div>
+      <button class="btn icon sm ghost" type="button" data-close aria-label="Close">${ic("x","sm")}</button></div>
+    <div class="modal-b ihelp">
+      ${hosted ? "" : `<div class="card" style="padding:14px 16px;background:var(--accent-soft);border-color:var(--accent-line)"><b>First open the app's own address:</b><br><a href="${APP_URL}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;word-break:break-all">${APP_URL}</a><p class="small muted" style="margin-top:4px">Install works from there, not from inside this preview.</p></div>`}
+      ${ios ? iphone + desk + andr : android ? andr + iphone + desk : desk + andr + iphone}
+    </div>
+    <div class="modal-f"><button class="btn primary" type="button" data-close>Got it</button></div>
+  </div>`);
+}
+
 /* reasons suggestions */
 document.body.insertAdjacentHTML("beforeend", `<datalist id="reasons">
   <option value="Client yet to share"><option value="Director travelling"><option value="Document under renewal">
@@ -1381,6 +1441,9 @@ document.body.insertAdjacentHTML("beforeend", `<datalist id="reasons">
 
 /* ---------- boot ---------- */
 (function boot(){
+  if("serviceWorker" in navigator && location.protocol === "https:"){
+    try{ navigator.serviceWorker.register("sw.js").catch(() => {}); }catch(e){}
+  }
   const s = LS.get(KEY.session, null);
   if(s && s.email){ S.user = s; load(s.email); render(); }
   else renderLogin();

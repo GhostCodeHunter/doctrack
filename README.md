@@ -8,6 +8,7 @@ Track pending company documents to collect, one task per company.
 - Export a styled Excel (.xlsx) report: Dashboard, All Documents, Pending
 - Sign in with Gmail; projects are kept per account in the browser
 - Backup / restore as JSON
+- Install as an app (PWA): desktop shortcut or phone home-screen icon, works offline
 
 ## Run
 
